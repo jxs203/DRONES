@@ -561,7 +561,7 @@ class Drone():
 		self.check_weight()
 
 	def wait(self, turns: int) -> int:
-		command_string = f"{self.id} W {turns}"
+		command_string = f"{self.id} W {int(turns)}"
 		self.command_history.append(command_string)
 		self.busy_until += global_turn + turns
 
@@ -659,10 +659,14 @@ for global_turn in range(0,max_turn):
 		for this_drone in all_drones: 
 			if this_drone.free: # If the drone is free
 				this_drone.act_on_shipment(shipments_for_redist.pop())
-			if len(shipments_for_redist) == 0: # if this was the last redistribution order
-				last_redist_turn = this_drone.busy_until
-				# need to add in waiting statement here for these drones!
-				break # stop looping through drones and progress turns
+				if len(shipments_for_redist) == 0: # if this was the last redistribution order
+					last_redist_turn = this_drone.busy_until
+					# loop over all other drones and add a wait section
+					for other_drone in all_drones:
+						if other_drone is not this_drone:
+							waitdiff = last_redist_turn - other_drone.busy_until
+							other_drone.wait(waitdiff)
+					break # stop looping through drones and progress turns
 
 	if global_turn >= last_redist_turn: # if all redistribution is done
 		if len(shipments_for_delivery) > 0: #still delivery shipments to be done
