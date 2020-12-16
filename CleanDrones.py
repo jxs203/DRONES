@@ -9,6 +9,7 @@ import copy
 
 # %%
 # read in competition data
+# kaggle: phil = open('/kaggle/input/hashcode-drone-delivery/busy_day.in','r')
 phil = open('busy_day.in','r')
 data = phil.read().split("\n")
 phil.close()
@@ -221,26 +222,30 @@ class Shipment:
 		assigned_warehouse_id_IN: int,
 		product_objects_IN: list,
 		redist_warehouse_ID_IN: int = None):
-				self.Order_id = id_IN # a unique ID of the order this shipment is tied to
-				self.destination = destination_IN # a numpy list of size [1,2] containing the vector location
-				self.assigned_warehouse_ID = assigned_warehouse_id_IN # the unique ID of the warehouse
-				self.product_objects = product_objects_IN # a list of Product objects that make up this shipment
-				self.product_counts = {}
-				for prodob in self.product_objects:
-					if prodob.id in self.product_counts:
-						self.product_counts.update({prodob.id:self.product_counts[prodob.id]+1})
-					else:
-						self.product_counts[prodob.id] = 1
+			self.Order_id = id_IN # a unique ID of the order this shipment is tied to
+			self.destination = destination_IN # a numpy list of size [1,2] containing the vector location
+			self.assigned_warehouse_ID = assigned_warehouse_id_IN # the unique ID of the warehouse we're taking products from
+			self.product_objects = product_objects_IN # a list of Product objects that make up this shipment
+			self.product_counts = {} # a dictionary of products in this shipment(key), and their counts(value)
+			for prodob in self.product_objects:
+				if prodob.id in self.product_counts:
+					self.product_counts.update({prodob.id:self.product_counts[prodob.id]+1})
+				else:
+					self.product_counts[prodob.id] = 1
 
 				
-				self.origin = all_warehouses[self.assigned_warehouse_ID].location # the origin of the shipment
-				self.redist_warehouse_ID = redist_warehouse_ID_IN # optional parameter - if redistribution, give the ID of the warehouse we're redistributing to 
+			self.origin = all_warehouses[self.assigned_warehouse_ID].location # the origin of the shipment
+			self.redist_warehouse_ID = redist_warehouse_ID_IN # optional parameter - if redistribution, give the ID of the warehouse we're redistributing to 
 
 		def __repr__(self)->str:
 				out_str  = f"iD of order: {self.Order_id}\nDestination: {self.destination}\n"
 				out_str += f"Source: {self.origin}\n"
 				out_str += f"Shipping Products: {self.product_objects}\n"
 				out_str += f"Assigned warehouse iD: {self.assigned_warehouse_ID}\n"
+				if self.redist_warehouse_ID is not None:
+					out_str += f"Redistribution job to warehouse {self.redist_warehouse_ID}."
+				else:
+					out_str += "Delivery to customer job."
 
 				return out_str
 
@@ -335,6 +340,7 @@ for count,wh in enumerate(all_warehouses):
 										assigned_warehouse_id_IN=wh.id,
 										product_objects_IN=order_products,
 										redist_warehouse_ID_IN = neighbourw.id))
+
 										neighbourw.excess[prodID] -= req_prod_excess
 										my_request[prodID] -= req_prod_excess
 										#print(my_request[prodID])
@@ -366,7 +372,7 @@ print(len(redist_orders))
 # %%
 # Split orders into shipments
 
-def ordersToShipments(olist: list, redist: bool = False) -> list:
+def ordersToShipments(olist: list) -> list:
 		"""For a list of orders, make a list of actionable shipment objects that can be passed to drones. """
 		ret_shipments = []
 		drone_capacity = int(data[0].split()[-1])
@@ -381,7 +387,7 @@ def ordersToShipments(olist: list, redist: bool = False) -> list:
 						total_prod_weight += prd.weight
 				
 				if total_prod_weight <= drone_capacity: # if the whole order can fit in a single drone
-						ship = Shipment(len(ret_shipments),
+						ship = Shipment(this_order.id,
 						this_order.location,
 						this_order.assigned_warehouse_ID,
 						this_order.product_objects,
@@ -416,7 +422,7 @@ def ordersToShipments(olist: list, redist: bool = False) -> list:
 
 
 								#print("finished cycle")
-								ship = Shipment(len(ret_shipments),
+								ship = Shipment(this_order.id,
 								this_order.location,
 								this_order.assigned_warehouse_ID,
 								bib_prod_list,
@@ -439,8 +445,8 @@ sm = ordersToShipments(tstlst)
 print("The following should return 2:", len(sm)) 
 
 # %%
-shipments_for_redist = ordersToShipments(redist_orders, True)
-shipments_for_delivery = ordersToShipments(delivery_orders, False)
+shipments_for_redist = ordersToShipments(redist_orders)
+shipments_for_delivery = ordersToShipments(delivery_orders)
 
 
 # %%
@@ -493,9 +499,9 @@ class Drone():
 			target_coords = target
 		
 		distance = np.ceil(npdistance(self.coords, target_coords))
-		print("movment distance calculated:", distance)
+		#print("movment distance calculated:", distance)
 		self.busy_until += distance
-		print(f"Drone {self.id} now busy until {self.busy_until}.\n")
+		#print(f"Drone {self.id} now busy until {self.busy_until}.\n")
 
 		self.coords = target_coords
 
@@ -524,6 +530,8 @@ class Drone():
 			)
 		else:
 			self.inventory[product_id] -= N_items
+			if self.inventory[product_id] == 0:
+				del(self.inventory[product_id])
 		
 		self.check_weight()
 
@@ -540,13 +548,15 @@ class Drone():
 					f"Drone {self.id} on turn {global_turn} has weight of {self.weight}/{self.max_weight}"
 					)
 
-	def deliver(self, order: Order, product_id: int, N_items)-> None:
-		command_string = f"{self.id} D {order.id} {product_id} {N_items}"
+	def deliver(self, ship: Shipment, product_id: int, N_items)-> None:
+		command_string = f"{self.id} D {ship.Order_id} {product_id} {N_items}"
 		self.command_history.append(command_string)
-		self.move(order.destination)
+		self.move(ship.destination)
 		self.busy_until += 1
 		
 		self.inventory[product_id] -= N_items
+		if self.inventory[product_id] == 0:
+			del(self.inventory[product_id])
 
 		self.check_weight()
 
@@ -556,27 +566,31 @@ class Drone():
 		self.busy_until += global_turn + turns
 
 	def act_on_shipment(self, ship: Shipment) -> None:
-		print(self.weight)
+		#print(f"Acting on shipment called. Current weight: {self.weight}")
 		self.move(ship.origin) # move to pickup location
+		#print("Movement called to move to location of shipment.")
+		#print("Now going to load all the products.")
 		for prod_key in ship.product_counts:
 			self.load(all_warehouses[ship.assigned_warehouse_ID],
 			prod_key,
 			ship.product_counts[prod_key])
-			print(self.inventory)
-
-		print(self.weight)
+			#print(self.inventory)
+		
+		#print(f"Loaded the products. Current weight: {self.weight}")
 		self.move(ship.destination)
+		#print("Movement called to move to destination of shipment.")
 		if ship.redist_warehouse_ID != None: # if a redistribution order
+			#print(f"This is a redistribution order to warehouse {ship.redist_warehouse_ID}.")
 			for prod_key in ship.product_counts:
 				self.unload(all_warehouses[ship.redist_warehouse_ID],
 				prod_key,
 				ship.product_counts[prod_key])
 		else: # must be a delivery order
+			#print(f"This is a delivery order for order {ship.Order_id}.")
 			for prod_key in ship.product_counts:
-				self.deliver(ship.Order_id,
+				self.deliver(ship,
 				prod_key,
 				ship.product_counts[prod_key])
-		print(self.weight)
 
 	def __repr__(self):
 		rep = f"Drone: {self.id}\nLocation: {self.coords}\nInventory: {self.inventory}\n"
@@ -604,11 +618,17 @@ print(dt[0].command_history)
 print("busy until:", dt[0].busy_until)
 
 # %%
+print(dt[0].weight)
 
+# %%
+dt = []
+dt.append(Drone(np.array([0.,0.]),0))
+print("Drone test2:", dt[0])
 print(shipments_for_delivery[0])
 
 dt[0].act_on_shipment(shipments_for_delivery[0])
-
+print(dt[0].command_history)
+print(dt[0].inventory)
 # This looks like it's working!
 
 
@@ -616,5 +636,51 @@ dt[0].act_on_shipment(shipments_for_delivery[0])
 # # Main simulation loop
 # Loop over every drone.
 # For each drone that is free:
-#     Get list 
+# * Get list of current jobs
+# * Assign a drone to a job
+# * If that job is the last redistribution job, wait until all redistribution jobs are done before assigning new jobs to the final order distribution (potentially very time consuming wait step?)
+# * If there are no more jobs on either redistribution or delivery jobs then print out all drone command histories because you've got a solution and exit the loop
 
+# %%
+# Create all drones array
+all_drones = []
+for i in range(int(data[0].split()[2])): #3rd entry in first line of input data
+	all_drones.append(Drone(all_warehouses[0].location,len(all_drones)))
+
+# %%
+
+global_turn = 0
+final_turn = int(data[0].split()[3]) # 4th entry in first line of input data
+last_redist_turn = final_turn # set arbitrarily high for now
+max_turn = int(data[0].split()[3]) 
+for global_turn in range(0,max_turn):
+	
+	if len(shipments_for_redist) > 0: # If we still need to redistribute, do this
+		for this_drone in all_drones: 
+			if this_drone.free: # If the drone is free
+				this_drone.act_on_shipment(shipments_for_redist.pop())
+			if len(shipments_for_redist) == 0: # if this was the last redistribution order
+				last_redist_turn = this_drone.busy_until
+				# need to add in waiting statement here for these drones!
+				break # stop looping through drones and progress turns
+
+	if global_turn >= last_redist_turn: # if all redistribution is done
+		if len(shipments_for_delivery) > 0: #still delivery shipments to be done
+			for this_drone in all_drones: 
+				if this_drone.free: # If the drone is free
+					this_drone.act_on_shipment(shipments_for_delivery.pop())
+				if len(shipments_for_delivery) == 0: # if this was the last redistribution order
+					break # stop looping through drones and progress turns
+		else:
+			break # stop going through global turns
+
+# %%
+# finally, print out all the commands
+
+print(global_turn, final_turn)
+# kaggle:   with open("/kaggle/working/submission.csv", "w") as f:
+with open("submission.csv", "w") as f:
+	for this_drone in all_drones:
+		for command in this_drone.command_history:
+			f.write(command + "\n")
+# %%
