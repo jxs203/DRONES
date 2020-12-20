@@ -10,7 +10,7 @@ import copy
 # %%
 # read in competition data
 # kaggle: phil = open('/kaggle/input/hashcode-drone-delivery/busy_day.in','r')
-phil = open('busy_day.in','r')
+phil = open('handtest.in','r')
 data = phil.read().split("\n")
 phil.close()
 
@@ -135,7 +135,7 @@ class Product:
 
 				# string representation of the object
 		def __repr__(self)->str:
-				out_str  = f"iD: {self.id}\nWeight: {self.weight}\n"   
+				out_str  = f"iD: {self.id}, Weight: {self.weight}"   
 				return out_str
 
 
@@ -196,7 +196,7 @@ class Order:
 		def __init__(self,id_IN,location_IN,assigned_warehouse_id_IN,product_objects_IN,redist_warehouse_ID_IN = None):
 				self.id = id_IN # a unique ID of the order
 				self.location = location_IN # a numpy list of size [1,2] containing the vector location
-				self.assigned_warehouse_ID = assigned_warehouse_id_IN # the unique ID of the warehouse
+				self.assigned_warehouse_ID = assigned_warehouse_id_IN # the unique ID of the warehouse the order originates from
 				self.product_objects = product_objects_IN # a list of Product objects that make up this order
 				self.redist_warehouse_ID = redist_warehouse_ID_IN # if redist, set to id of warehouse we're redistributing to
 
@@ -206,7 +206,9 @@ class Order:
 		def __repr__(self)->str:
 				out_str  = f"iD: {self.id}\nDestination: {self.location}\n"
 				out_str += f"Requested Products: {self.product_objects}\n"
-				out_str += f"Assigned warehouse iD: {self.assigned_warehouse_ID}\n"
+				out_str += f"Origin warehouse iD: {self.assigned_warehouse_ID}\n"
+				if self.redist_warehouse_ID is not None:
+					out_str += f"Target Redistribution ID: {self.redist_warehouse_ID}\n"
 				return out_str
 
 		def listOfProductIDs(self):
@@ -293,62 +295,68 @@ for i in range(0,num_warehouses):
 for wh in all_warehouses:
 		wh.stockCalculation()
 
-warehouse_neighbours = [] #list of lists of clostest neighbours for each other warehouse
 
-# for each warehouse
-for wh in all_warehouses:
-		myloc = wh.location
-		closest_neighbours = {}
-		for count,neigh in enumerate(all_warehouses):
-				if (neigh != wh):
-						closest_neighbours[count] = npdistance(myloc,neigh.location)
-						
-		# from the dictionary, sort based on distance and make a list from the keys
-		sortedl = [k for k, v in sorted(closest_neighbours.items(), key=lambda item: item[1])]
-				
-		warehouse_neighbours.append(sortedl)
 
 
 redist_orders = []
 
-for count,wh in enumerate(all_warehouses):
-		my_request = wh.request
-		#print(my_request)
-		# create an order for distribution from each neighbour until my_demand is all zeroes
-		for neighbour in warehouse_neighbours[count]:
-				neighbourw = all_warehouses[neighbour]
-				# if requests haven't been satisfied
-				#print("requesting items from warehouse", neighbour, "for warehouse", count)
-				if not all(item == 0 for item in my_request):
-						#print("requests not all zero for wh", count)
-						# for each product in demand list
-						for prodID,request_level in enumerate(my_request):
+def calculate_redistribution(in_warehouses: List, prodat: dict) -> List:
+	warehouse_neighbours = [] #list of lists of clostest neighbours for each other warehouse
+	if len(in_warehouses) == 2:
+		warehouse_neighbours = [[1],[0]]
+	else:
+		# for each warehouse
+		for wh in in_warehouses:
+				myloc = wh.location
+				closest_neighbours = {}
+				for count,neigh in enumerate(in_warehouses):
+						if (neigh != wh):
+								closest_neighbours[count] = npdistance(myloc,neigh.location)
+								
+				# from the dictionary, sort based on distance and make a list from the keys
+				sortedl = [k for k, v in sorted(closest_neighbours.items(), key=lambda item: item[1])]
+						
+				warehouse_neighbours.append(sortedl)
+	redist_orders = []
+	for count,wh in enumerate(in_warehouses):
+			my_request = wh.request
+			#print(my_request)
+			# create an order for distribution from each neighbour until my_demand is all zeroes
+			for neighbour in warehouse_neighbours[count]:
+					neighbourw = in_warehouses[neighbour]
+					# if requests haven't been satisfied
+					#print("requesting items from warehouse", neighbour, "for warehouse", count)
+					if not all(item == 0 for item in my_request):
+							#print("requests not all zero for wh", count)
+							# for each product in demand list
+							for prodID,request_level in enumerate(my_request):
 
-								# if the neighbour has excess of a product we request
-								if neighbourw.excess[prodID] > 0 and request_level > 0:
-										#print(neighbourw.excess[prodID], request_level)
-										# request either the all of the excess, or what we demand, whichever is smallest
-										req_prod_excess = np.amin([neighbourw.excess[prodID],request_level])
+									# if the neighbour has excess of a product we request
+									if neighbourw.excess[prodID] > 0 and request_level > 0:
+											#print(neighbourw.excess[prodID], request_level)
+											# request either the all of the excess, or what we demand, whichever is smallest
+											req_prod_excess = np.amin([neighbourw.excess[prodID],request_level])
 
-										#print(req_prod_excess,neighbourw.excess[prodID],request_level)
-										#
-										req_prod_list = [prodID for x in range(req_prod_excess)] # create a repeated list of value prodID for the right length, based on req_prod_excess
-										order_products = [Product(x,product_data[x]) for x in req_prod_list]
-										#print(req_prod_list)
-										redist_orders.append(Order(id_IN=len(redist_orders),
-										location_IN =neighbourw.location,
-										assigned_warehouse_id_IN=wh.id,
-										product_objects_IN=order_products,
-										redist_warehouse_ID_IN = neighbourw.id))
+											#print(req_prod_excess,neighbourw.excess[prodID],request_level)
+											#
+											req_prod_list = [prodID for x in range(req_prod_excess)] # create a repeated list of value prodID for the right length, based on req_prod_excess
+											order_products = [Product(x,prodat[x]) for x in req_prod_list]
+											#print(req_prod_list)
+											redist_orders.append(Order(id_IN=len(redist_orders),
+											location_IN =neighbourw.location,
+											assigned_warehouse_id_IN=wh.id,
+											product_objects_IN=order_products,
+											redist_warehouse_ID_IN = neighbourw.id))
 
-										neighbourw.excess[prodID] -= req_prod_excess
-										my_request[prodID] -= req_prod_excess
-										#print(my_request[prodID])
-										#print("(end of adjustment for this prod from this wh)")
-		#print(my_demand)
-		#print(my_request)
+											neighbourw.excess[prodID] -= req_prod_excess
+											my_request[prodID] -= req_prod_excess
+											#print(my_request[prodID])
+											#print("(end of adjustment for this prod from this wh)")
+			#print(my_demand)
+			#print(my_request)
+	return redist_orders
 		
-
+redist_orders = calculate_redistribution(all_warehouses, product_data)
 
 # %%
 # Safety test to make sure that there's no more demand anywhere
@@ -651,21 +659,31 @@ for i in range(int(data[0].split()[2])): #3rd entry in first line of input data
 
 global_turn = 0
 final_turn = int(data[0].split()[3]) # 4th entry in first line of input data
-last_redist_turn = final_turn # set arbitrarily high for now
-max_turn = int(data[0].split()[3]) 
-for global_turn in range(0,max_turn):
+last_redist_turn = 0 # set arbitrarily high for now
+for global_turn in range(0,final_turn):
 	
 	if len(shipments_for_redist) > 0: # If we still need to redistribute, do this
 		for this_drone in all_drones: 
 			if this_drone.free: # If the drone is free
 				this_drone.act_on_shipment(shipments_for_redist.pop())
 				if len(shipments_for_redist) == 0: # if this was the last redistribution order
-					last_redist_turn = this_drone.busy_until
+					
+					# loop over all drones to get the largest last redist turn
+					for my_drone in all_drones:
+						if my_drone.busy_until > last_redist_turn:
+							last_redist_turn = my_drone.busy_until
+					print("last_redist_turn", last_redist_turn)
+
+
 					# loop over all other drones and add a wait section
 					for other_drone in all_drones:
-						if other_drone is not this_drone:
-							waitdiff = last_redist_turn - other_drone.busy_until
+						waitdiff = last_redist_turn - other_drone.busy_until
+						print(other_drone.id, waitdiff, other_drone.busy_until)
+						if waitdiff > 0:
 							other_drone.wait(waitdiff)
+						elif waitdiff < 0:
+							print("ERROR JAMES STUUUUUUPID")
+								
 					break # stop looping through drones and progress turns
 
 	if global_turn >= last_redist_turn: # if all redistribution is done
@@ -684,7 +702,23 @@ for global_turn in range(0,max_turn):
 print(global_turn, final_turn)
 # kaggle:   with open("/kaggle/working/submission.csv", "w") as f:
 with open("submission.csv", "w") as f:
+
+	# count how many lines:
+	count = 0
 	for this_drone in all_drones:
-		for command in this_drone.command_history:
-			f.write(command + "\n")
+		count += len(this_drone.command_history)
+	f.write(str(count) + "\n")
+
+
+
+	for this_drone in all_drones:
+		if this_drone == all_drones[-1]:
+			for command in this_drone.command_history:
+				if command == this_drone.command_history[-1]:
+					f.write(command)
+				else:
+					f.write(command + "\n")
+		else:
+			for command in this_drone.command_history:
+				f.write(command + "\n")
 # %%
