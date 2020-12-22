@@ -10,7 +10,7 @@ import copy
 # %%
 # read in competition data
 # kaggle: phil = open('/kaggle/input/hashcode-drone-delivery/busy_day.in','r')
-phil = open('handtest.in','r')
+phil = open('busy_day.in','r')
 data = phil.read().split("\n")
 phil.close()
 
@@ -193,9 +193,9 @@ class Warehouse:
 								self.excess[c] = item
 ''' This class describes complete customer orders and their assigned warehouse. '''
 class Order:
-		def __init__(self,id_IN,location_IN,assigned_warehouse_id_IN,product_objects_IN,redist_warehouse_ID_IN = None):
+		def __init__(self,id_IN,destination_IN,assigned_warehouse_id_IN,product_objects_IN,redist_warehouse_ID_IN = None):
 				self.id = id_IN # a unique ID of the order
-				self.location = location_IN # a numpy list of size [1,2] containing the vector location
+				self.location = destination_IN # a numpy list of size [1,2] containing the vector location
 				self.assigned_warehouse_ID = assigned_warehouse_id_IN # the unique ID of the warehouse the order originates from
 				self.product_objects = product_objects_IN # a list of Product objects that make up this order
 				self.redist_warehouse_ID = redist_warehouse_ID_IN # if redist, set to id of warehouse we're redistributing to
@@ -343,10 +343,11 @@ def calculate_redistribution(in_warehouses: List, prodat: dict) -> List:
 											order_products = [Product(x,prodat[x]) for x in req_prod_list]
 											#print(req_prod_list)
 											redist_orders.append(Order(id_IN=len(redist_orders),
-											location_IN =neighbourw.location,
-											assigned_warehouse_id_IN=wh.id,
+											destination_IN =wh.location, # destination
+											assigned_warehouse_id_IN=neighbourw.id,   # source
 											product_objects_IN=order_products,
-											redist_warehouse_ID_IN = neighbourw.id))
+											redist_warehouse_ID_IN = wh.id) # destination
+											)
 
 											neighbourw.excess[prodID] -= req_prod_excess
 											my_request[prodID] -= req_prod_excess
@@ -637,7 +638,14 @@ print(shipments_for_delivery[0])
 dt[0].act_on_shipment(shipments_for_delivery[0])
 print(dt[0].command_history)
 print(dt[0].inventory)
-# This looks like it's working!
+
+def assignGoodShipment(in_drone: Drone,shipment_list: list) -> None:
+	''' This method works out the closest remaining shipment available to the drone and allocates it this job, removing '''
+	location = in_drone.coords
+	for ship in shipment_list:
+		pass
+
+	this_drone.act_on_shipment(shipments_for_redist.pop())
 
 
 # %% [markdown]
@@ -665,7 +673,8 @@ for global_turn in range(0,final_turn):
 	if len(shipments_for_redist) > 0: # If we still need to redistribute, do this
 		for this_drone in all_drones: 
 			if this_drone.free: # If the drone is free
-				this_drone.act_on_shipment(shipments_for_redist.pop())
+
+				assignGoodShipment(this_drone,shipments_for_redist)
 				if len(shipments_for_redist) == 0: # if this was the last redistribution order
 					
 					# loop over all drones to get the largest last redist turn

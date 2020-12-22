@@ -7,10 +7,6 @@ import numpy as np
 
 class test_warehouses(unittest.TestCase):
 
-    def setUp(self) -> None:
-        data = [0,3] # set up 3 product types
-        all_warehouses = [] # set up list of all warehouses
-
     def test_stock_calc(self):
         print("test stock calc")
         # create an order of 1 1 1 products
@@ -55,6 +51,7 @@ class test_warehouses(unittest.TestCase):
         red = calculate_redistribution(whlist,product_data)
         # definitely something strange going on here, need to check this redistribution data.
         # Testing seems to be saying that the redistribution is going the wrong way.
+        # We would expect an order to have destination [10,10], requested products 1,20, origin 1 destination 0
         print(red)
 
 
