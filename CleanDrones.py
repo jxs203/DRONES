@@ -9,7 +9,8 @@ import copy
 
 # %%
 # read in competition data
-# kaggle: phil = open('/kaggle/input/hashcode-drone-delivery/busy_day.in','r')
+# kaggle: 
+#phil = open('/kaggle/input/hashcode-drone-delivery/busy_day.in','r')
 phil = open('busy_day.in','r')
 data = phil.read().split("\n")
 phil.close()
@@ -642,10 +643,17 @@ print(dt[0].inventory)
 def assignGoodShipment(in_drone: Drone,shipment_list: list) -> None:
 	''' This method works out the closest remaining shipment available to the drone and allocates it this job, removing '''
 	location = in_drone.coords
+	closest_dist = np.inf
+	closest_ship = None
 	for ship in shipment_list:
-		pass
+		dist_calc = npdistance(location,all_warehouses[ship.assigned_warehouse_ID].location)
+		if  dist_calc < closest_dist:
+			closest_ship = ship
+			closest_dist = dist_calc
 
-	this_drone.act_on_shipment(shipments_for_redist.pop())
+	in_drone.act_on_shipment(closest_ship)
+	shipments_for_redist.remove(closest_ship)
+
 
 
 # %% [markdown]
@@ -709,7 +717,8 @@ for global_turn in range(0,final_turn):
 # finally, print out all the commands
 
 print(global_turn, final_turn)
-# kaggle:   with open("/kaggle/working/submission.csv", "w") as f:
+# kaggle:   
+#with open("/kaggle/working/submission.csv", "w") as f:
 with open("submission.csv", "w") as f:
 
 	# count how many lines:
